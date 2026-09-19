@@ -14,6 +14,15 @@ export type DecisionReply = {
   upside: DecisionMetric[];
   verdict: DecisionVerdict;
   reasons: string[];
+  choices: string[];
+  event: {
+    title: string;
+    description: string;
+    whenText: string | null;
+    startAt: string | null;
+    endAt: string | null;
+    location: string | null;
+  } | null;
   threadId?: string;
 };
 
@@ -29,3 +38,7 @@ export type ChatAttachment = {
   size: number;
   dataUrl: string;
 };
+
+export function questionNeedsTypedAnswer(question: string) {
+  return /\b(?:estimated?|cost|price|amount|budget|how (?:much|many|far|long)|\d+\s*(?:to|-|–)\s*\d+|minutes?|hours?|miles?|dollars?)\b/i.test(question);
+}

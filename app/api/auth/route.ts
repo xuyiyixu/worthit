@@ -9,7 +9,7 @@ function credentials(value: unknown) {
   const body = value as Record<string, unknown>;
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
-  const mode = body.mode === "register" ? "register" : "login";
+  const mode = body.mode === "register" || body.action === "signup" ? "register" : "login";
   if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8 || password.length > 128) return null;
   return { email, password, mode };
 }
@@ -18,7 +18,7 @@ export async function GET() {
   if (!databaseConfigured()) return Response.json({ error: "DATABASE_URL is not configured.", code: "NOT_CONFIGURED" }, { status: 503 });
   try {
     const user = await currentUser();
-    return user ? Response.json({ user }) : Response.json({ error: "Not signed in." }, { status: 401 });
+    return Response.json({ user, message: user ? "Signed in" : "Not signed in" });
   } catch {
     return Response.json({ error: "The database is unavailable.", code: "DATABASE_ERROR" }, { status: 503 });
   }
@@ -26,7 +26,16 @@ export async function GET() {
 
 export async function POST(request: Request) {
   if (!databaseConfigured()) return Response.json({ error: "DATABASE_URL is not configured.", code: "NOT_CONFIGURED" }, { status: 503 });
-  const input = credentials(await request.json().catch(() => null));
+  const body = await request.json().catch(() => null) as { action?: unknown } | null;
+  if (body?.action === "logout") {
+    await clearSession().catch(() => undefined);
+    return Response.json({ user: null, message: "Signed out" });
+  }
+  if (body?.action === "refresh") {
+    const user = await currentUser().catch(() => null);
+    return Response.json({ user, message: user ? "Signed in" : "Not signed in" });
+  }
+  const input = credentials(body);
   if (!input) return Response.json({ error: "Enter a valid email and a password of at least 8 characters." }, { status: 400 });
 
   try {
@@ -42,7 +51,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Email or password is incorrect." }, { status: 401 });
     }
     await createSession(user.id);
-    return Response.json({ user: { id: user.id, email: user.email }, destination: input.mode === "register" ? "/onboarding" : "/history" });
+    return Response.json({ user: { id: user.id, email: user.email }, message: "Signed in" });
   } catch {
     return Response.json({ error: "The database is unavailable. Check DATABASE_URL and run the migration.", code: "DATABASE_ERROR" }, { status: 503 });
   }

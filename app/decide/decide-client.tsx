@@ -7,7 +7,7 @@ import { SiteHeader } from "../../components/site-header";
 import type { ChatAttachment, ChatMessage, DecisionMetric, DecisionReply } from "../../lib/decision-chat";
 
 const welcome: ChatMessage = { role: "assistant", content: "Tell me what you’re considering. I’ll ask for any decision-critical detail that’s missing, then give you a full scorecard—not just a yes or no." };
-const emptyDecision: DecisionReply = { reply: "", score: null, confidence: "low", summary: "", cost: [], upside: [], verdict: "undecided", reasons: [] };
+const emptyDecision: DecisionReply = { reply: "", score: null, confidence: "low", summary: "", cost: [], upside: [], verdict: "undecided", reasons: [], choices: [], event: null };
 const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]);
 const benefitOptions = ["Learned something", "Meaningful connection", "Useful opportunity", "Had fun", "Tried something new", "Strengthened a relationship"];
 const costOptions = ["Travel", "Money", "Waiting", "Crowd", "Social effort", "Lost sleep", "Time commitment", "Nothing significant"];

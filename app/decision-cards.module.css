@@ -1,0 +1,308 @@
+.choiceGrid {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.choiceButton {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.choiceButton:hover:not(:disabled) {
+  border-color: var(--green);
+  background: var(--wash);
+}
+
+.choiceButton:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+.scoreCard {
+  width: 100%;
+  margin-top: 18px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--green);
+  border-radius: 13px;
+  background: var(--paper);
+  box-shadow: 0 10px 30px rgb(50 58 48 / 5%);
+}
+
+.scoreCard.skip {
+  border-top-color: var(--ink-soft);
+}
+
+.scoreHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.scoreLabel,
+.confidence,
+.factors > b {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.scoreHead h3 {
+  margin-top: 7px;
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.scoreNumber {
+  color: var(--green);
+  display: flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+}
+
+.scoreNumber strong {
+  margin: 0;
+  font: 400 46px/0.9 "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+}
+
+.scoreNumber small {
+  font-size: 11px;
+}
+
+.summary {
+  margin-top: 14px;
+  color: var(--ink-soft) !important;
+}
+
+.scoreColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+.factors > div {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) 1.3fr 25px;
+  gap: 8px;
+  align-items: center;
+  margin-top: 9px;
+  font-size: 10px;
+}
+
+.factors > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factors i {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.factors i span {
+  display: block;
+  height: 100%;
+  background: var(--green);
+}
+
+.factors strong {
+  margin: 0;
+  justify-content: flex-end;
+  font-size: 10px;
+}
+
+.reasons {
+  margin: 17px 0 14px;
+  padding: 0;
+  list-style: none;
+  counter-reset: reason;
+}
+
+.reasons li {
+  counter-increment: reason;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.reasons li::before {
+  content: "0" counter(reason);
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.confidence {
+  display: block;
+  line-height: 1.5;
+}
+
+.decisionActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.actionButton,
+.feedbackButton {
+  min-height: 43px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.actionButton:hover:not(:disabled),
+.feedbackButton:hover:not(:disabled),
+.selectedAction {
+  border-color: var(--green);
+  background: var(--wash);
+}
+
+.selectedAction {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.feedbackButton {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+}
+
+.calendarPlans {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.calendarPlan {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.calendarPlan > span {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--green);
+  background: var(--wash);
+  display: grid;
+  place-items: center;
+}
+
+.calendarPlan p {
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.calendarDot {
+  width: 6px;
+  height: 6px;
+  margin-top: auto;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.eventDetail > p {
+  margin: 4px 0 20px;
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+
+.eventMeta {
+  display: grid;
+  gap: 10px;
+}
+
+.eventMeta > div {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 9px;
+  align-items: start;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.eventMeta svg {
+  margin-top: 2px;
+  color: var(--green);
+}
+
+.eventMeta span {
+  display: grid;
+  gap: 3px;
+}
+
+.eventMeta small {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+@media (max-width: 700px) {
+  .scoreCard {
+    padding: 17px;
+  }
+
+  .scoreColumns,
+  .decisionActions {
+    grid-template-columns: 1fr;
+  }
+
+  .feedbackButton {
+    grid-column: auto;
+  }
+
+  .calendarPlan {
+    grid-template-columns: 38px 1fr;
+  }
+
+  .calendarPlan > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
