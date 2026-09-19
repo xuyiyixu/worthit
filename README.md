@@ -31,9 +31,9 @@ Both paths should start with the active Conda environment path (for example, `..
 Initialize a development-only database inside the project. Choose a password when `initdb` prompts, then use the same password in `DATABASE_URL` below:
 
 ```bash
-initdb -D .postgres-data -U postgres --auth=scram-sha-256 --pwprompt
-pg_ctl -D .postgres-data -l .postgres-data/server.log -o "-p 5433" start
-createdb -h 127.0.0.1 -p 5433 -U postgres worthit
+"$CONDA_PREFIX/bin/initdb" -D .postgres-data -U postgres --auth=scram-sha-256 --pwprompt
+"$CONDA_PREFIX/bin/pg_ctl" -D .postgres-data -l .postgres-data/server.log -o "-p 5433" start
+"$CONDA_PREFIX/bin/createdb" -h 127.0.0.1 -p 5433 -U postgres worthit
 ```
 
 Copy `.env.example` to `.env.local` and replace the password and NVIDIA API key. If the database password contains URL-special characters, percent-encode them in the connection URL.
@@ -52,7 +52,7 @@ npm run migrate
 npm run dev
 ```
 
-To stop the local database later, run `pg_ctl -D .postgres-data stop` from the activated `worthit` environment.
+To stop the local database later, run `"$CONDA_PREFIX/bin/pg_ctl" -D .postgres-data stop` from the activated `worthit` environment.
 
 Accounts use an HTTP-only session cookie. Users, sessions, decision threads, messages, verdicts, and attachment metadata/content are stored in PostgreSQL. The configured Nemotron 3 Nano Omni 30B A3B model handles both text and image evidence; PDF, DOCX, and TXT content is extracted server-side before it is sent to NVIDIA. The text-only `nvidia/nemotron-3-nano-30b-a3b` hosted endpoint is not currently listed for this NVIDIA account, so the available multimodal variant is used.
 
