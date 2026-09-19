@@ -1,0 +1,31 @@
+{
+  "name": "worthit",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/require-conda.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/require-conda.mjs",
+    "build": "next build",
+    "prestart": "node scripts/require-conda.mjs",
+    "start": "next start",
+    "pretypecheck": "node scripts/require-conda.mjs",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "premigrate": "node scripts/require-conda.mjs",
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "mammoth": "^1.12.3",
+    "next": "^16.3.5",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.23.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
