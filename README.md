@@ -61,6 +61,8 @@ Accounts use an HTTP-only session cookie. Users, sessions, decision threads, mes
 - Eight-question behavioral onboarding with an internal social-pattern profile
 - Text, image, PDF, DOCX, and TXT input in the AI conversation
 - Email/password accounts with PostgreSQL-backed sessions and decision history
+- New-account onboarding stored as a reusable decision baseline
+- Returning-user history with prior prompts, verdicts, and reasons
 - Deterministic event trait inference with explicit provenance
 - User-provided travel time and familiar-people context
 - Explainable, deterministic cost and takeaway scoring

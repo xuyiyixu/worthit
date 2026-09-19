@@ -7,6 +7,9 @@ export type DecisionMetric = {
 
 export type DecisionReply = {
   reply: string;
+  score: number | null;
+  confidence: "low" | "medium" | "high";
+  summary: string;
   cost: DecisionMetric[];
   upside: DecisionMetric[];
   verdict: DecisionVerdict;

@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Email or password is incorrect." }, { status: 401 });
     }
     await createSession(user.id);
-    return Response.json({ user: { id: user.id, email: user.email } });
+    return Response.json({ user: { id: user.id, email: user.email }, destination: input.mode === "register" ? "/onboarding" : "/history" });
   } catch {
     return Response.json({ error: "The database is unavailable. Check DATABASE_URL and run the migration.", code: "DATABASE_ERROR" }, { status: 503 });
   }

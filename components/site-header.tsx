@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { SignOutButton } from "./sign-out-button";
 
-export function SiteHeader({ progress = 0, onHome }: { progress?: number; onHome?: () => void }) {
+export function SiteHeader({ progress = 0, onHome, signedIn = false }: { progress?: number; onHome?: () => void; signedIn?: boolean }) {
   return (
     <header className="site-header">
       {onHome ? (
@@ -9,7 +10,9 @@ export function SiteHeader({ progress = 0, onHome }: { progress?: number; onHome
         <Link className="wordmark" href="/">Worth<span>It</span><i>.</i></Link>
       )}
       <nav className="header-nav" aria-label="Primary navigation">
+        <Link href="/history">History</Link>
         <Link href="/decide">Decide</Link>
+        {signedIn && <SignOutButton />}
       </nav>
       <div className="journey-wrap">
         <span className="journey-label">Progress {progress}%</span>
