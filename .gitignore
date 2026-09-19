@@ -2,6 +2,7 @@
 node_modules
 .env*
 !.env.example
+.postgres-data
 .DS_Store
 *.log
 *.tsbuildinfo

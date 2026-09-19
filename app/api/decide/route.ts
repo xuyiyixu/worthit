@@ -8,7 +8,7 @@ import type { ChatAttachment, ChatMessage, DecisionMetric, DecisionReply, Decisi
 export const runtime = "nodejs";
 
 const endpoint = process.env.NVIDIA_API_URL ?? "https://integrate.api.nvidia.com/v1/chat/completions";
-const model = process.env.NVIDIA_MODEL ?? "google/gemma-4-31b-it";
+const model = process.env.NVIDIA_MODEL ?? "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
 const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]);
 
 const systemPrompt = `You are WorthIt, a balanced decision partner for events and plans.

@@ -17,15 +17,44 @@ Open [http://localhost:3000](http://localhost:3000). Use **See a 30-second demo*
 
 ## Configure persistence and AI
 
-Copy `.env.example` to `.env.local`, set `DATABASE_URL` and `NVIDIA_API_KEY`, then create the PostgreSQL tables:
+PostgreSQL is installed inside the same Conda environment as Node.js. Update the environment once after pulling these dependencies:
 
 ```bash
+conda env update -f environment.yml --prune
 conda activate worthit
+which node
+which postgres
+```
+
+Both paths should start with the active Conda environment path (for example, `.../envs/worthit/bin/`). The project refuses to run when `node` resolves to a global installation.
+
+Initialize a development-only database inside the project. Choose a password when `initdb` prompts, then use the same password in `DATABASE_URL` below:
+
+```bash
+initdb -D .postgres-data -U postgres --auth=scram-sha-256 --pwprompt
+pg_ctl -D .postgres-data -l .postgres-data/server.log -o "-p 5433" start
+createdb -h 127.0.0.1 -p 5433 -U postgres worthit
+```
+
+Copy `.env.example` to `.env.local` and replace the password and NVIDIA API key. If the database password contains URL-special characters, percent-encode them in the connection URL.
+
+```dotenv
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@127.0.0.1:5433/worthit
+NVIDIA_API_KEY=nvapi-your-key-here
+NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+NVIDIA_API_URL=https://integrate.api.nvidia.com/v1/chat/completions
+```
+
+Create the application tables and start the site:
+
+```bash
 npm run migrate
 npm run dev
 ```
 
-Accounts use an HTTP-only session cookie. Users, sessions, decision threads, messages, verdicts, and attachment metadata/content are stored in PostgreSQL. PDF and DOCX text is extracted server-side; supported images are sent to the configured vision-capable NVIDIA model.
+To stop the local database later, run `pg_ctl -D .postgres-data stop` from the activated `worthit` environment.
+
+Accounts use an HTTP-only session cookie. Users, sessions, decision threads, messages, verdicts, and attachment metadata/content are stored in PostgreSQL. The configured Nemotron 3 Nano Omni 30B A3B model handles both text and image evidence; PDF, DOCX, and TXT content is extracted server-side before it is sent to NVIDIA. The text-only `nvidia/nemotron-3-nano-30b-a3b` hosted endpoint is not currently listed for this NVIDIA account, so the available multimodal variant is used.
 
 ## What is implemented
 

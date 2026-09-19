@@ -3,3 +3,4 @@ channels:
   - conda-forge
 dependencies:
   - nodejs=22
+  - postgresql=16
