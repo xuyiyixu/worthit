@@ -220,4 +220,4 @@ npm run build
 ## Team Members
 
 - **Kelly Zheng Feng** — Kellyzheng0295@gmail.com
-- **Full Name** — email address
+- **Shirley Yi Xu** — xuyiyiyixu@gmail.com
