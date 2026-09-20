@@ -97,7 +97,7 @@ import cardStyles from "./decision-cards.module.css";
 import { metricScoreOutOfTen, questionNeedsTypedAnswer } from "@/lib/decision-chat";
 const links = [
   ["Home", Home],
-  ["What Should I Do?", MessageCircle],
+  ["Decide", MessageCircle],
   ["My Calendar", CalendarDays],
   ["Tarot", Sparkles],
   ["Insights", Heart],
@@ -208,10 +208,7 @@ function SideNav({
       <SidebarHeader>
         <div className="brand">
           <span>✦</span>
-          <h2>
-            What Should
-            <br />I Do?
-          </h2>
+          <h2>Wotrhit</h2>
         </div>
         <p className="brand-note">A little clarity. A little more you.</p>
       </SidebarHeader>
@@ -396,7 +393,7 @@ export default function Page() {
       context.registerTool(
         {
           name: "navigate_social_companion",
-          description: "Navigate to a page in What Should I Do?",
+          description: "Navigate to a page in Wotrhit",
           inputSchema: {
             type: "object",
             properties: {
@@ -753,7 +750,7 @@ export default function Page() {
                       </p>
                       <button
                         className="light"
-                        onClick={() => navigate("What Should I Do?")}
+                        onClick={() => navigate("Decide")}
                       >
                         Let’s figure it out <ArrowUpRight size={18} />
                       </button>
@@ -810,7 +807,7 @@ export default function Page() {
                         "↗",
                         "Close the loop",
                         "How did your last plan feel?",
-                        "What Should I Do?",
+                        "Decide",
                       ],
                     ].map(([icon, title, body, target]) => (
                       <button
@@ -877,7 +874,7 @@ export default function Page() {
                   </section>
                 </>
               )}
-              {page === "What Should I Do?" && (
+              {page === "Decide" && (
                 <>
                   <Heading
                     eyebrow="YOUR SPACE TO THINK"

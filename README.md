@@ -1,6 +1,6 @@
-# What Should I Do?
+# Wotrhit
 
-A responsive decision companion for thinking through plans using current energy, personal preferences, calendar commitments, and past outcomes.
+Wotrhit is a responsive decision companion for thinking through plans using current energy, personal preferences, calendar commitments, and past outcomes.
 
 ## Features
 
