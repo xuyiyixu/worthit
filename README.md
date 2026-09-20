@@ -39,7 +39,7 @@ which node
 which postgres
 ```
 
-Both executable paths should start inside `.../envs/worthit/bin/`. Project scripts intentionally fail when run with a global Node.js installation.
+Both executable paths should start inside `.../envs/worthit/bin/`. Local project scripts intentionally fail when run with a global Node.js installation; Vercel builds are exempt from this local environment check.
 
 Initialize a local PostgreSQL database:
 
