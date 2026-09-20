@@ -99,7 +99,7 @@
 
 .factors > div {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) 1.3fr 25px;
+  grid-template-columns: minmax(70px, 1fr) 1.3fr 38px;
   gap: 8px;
   align-items: center;
   margin-top: 9px;
@@ -281,6 +281,17 @@
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
+}
+
+.eventMeta em {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.eventDetail > button {
+  margin-top: 16px;
 }
 
 @media (max-width: 700px) {

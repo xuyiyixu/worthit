@@ -1,11 +1,31 @@
 import { currentUser } from "../../../../lib/auth";
 import { databaseConfigured, query } from "../../../../lib/db";
 import type { CalendarEvent } from "../../../../lib/model";
+import { nvidiaConfigured, nvidiaEndpoint, nvidiaHeaders, nvidiaModel } from "../../../../lib/nvidia";
 
 export const runtime = "nodejs";
 
-const endpoint = process.env.NVIDIA_API_URL ?? "https://integrate.api.nvidia.com/v1/chat/completions";
-const model = process.env.NVIDIA_MODEL ?? "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
+const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] } as const;
+const eventResponseFormat = {
+  type: "json_schema",
+  json_schema: {
+    name: "worthit_calendar_event",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        whenText: nullableString,
+        startAt: nullableString,
+        endAt: nullableString,
+        location: nullableString,
+      },
+      required: ["title", "description", "whenText", "startAt", "endAt", "location"],
+      additionalProperties: false,
+    },
+  },
+} as const;
 
 function cleanJson(content: string) {
   return content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -54,7 +74,7 @@ function parseEvent(content: string, fallback: CalendarEvent): CalendarEvent {
 
 async function extractEvent(source: string) {
   const fallback = fallbackEvent(source);
-  if (!process.env.NVIDIA_API_KEY) return fallback;
+  if (!nvidiaConfigured()) return fallback;
   const prompt = `Extract one calendar event from the source text. Return only JSON with this shape:
 {"title":"2-8 word event name","description":"One or two sentences explaining what the event is for","whenText":"Exact date and time as written","startAt":null,"endAt":null,"location":"Concise venue or address"}
 Summarize; do not copy the invitation, greeting, registration URL, or sign-off. Preserve the exact stated date and time in whenText. Only provide ISO startAt/endAt when year and timezone are grounded; otherwise use null. Use null for unknown location.
@@ -62,20 +82,17 @@ Summarize; do not copy the invitation, greeting, registration URL, or sign-off. 
 SOURCE:
 ${source.slice(0, 12_000)}`;
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetch(nvidiaEndpoint, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+      headers: nvidiaHeaders(),
       body: JSON.stringify({
-        model,
+        model: nvidiaModel,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.2,
         top_k: 1,
         max_tokens: 500,
         chat_template_kwargs: { enable_thinking: false },
+        response_format: eventResponseFormat,
         stream: false,
       }),
       signal: AbortSignal.timeout(30_000),

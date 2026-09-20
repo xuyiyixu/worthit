@@ -1,6 +1,6 @@
 import { AppState, Attachment, current, DecisionCard, demoReply, Message, Reading } from "./model";
 import { makeReading } from "./tarot";
-export const DEMO_KEY = "wsid-demo-v1";
+export const DEMO_KEY = "wsid-demo-v4";
 export function api(
   path: "/api/config",
 ): Promise<{ auth: boolean; ai: boolean; vision: boolean }>;
@@ -14,6 +14,10 @@ export function api(
   body: { action: "draw" },
 ): Promise<Reading>;
 export function api(path: "/api/data", body: unknown): Promise<{ ok: boolean }>;
+export function api(
+  path: "/api/calendar/energy",
+  body: unknown,
+): Promise<{ energyLoad: number; explanation: string }>;
 export function api(
   path: "/api/chat",
   body: unknown,
@@ -101,10 +105,10 @@ export async function drawDemo(state: AppState): Promise<Reading> {
   if (navigator.locks) return navigator.locks.request("wsid-daily-draw", draw);
   return draw();
 }
-export async function readAttachment(file: File): Promise<Attachment> {
+export async function readAttachments(file: File, maxPdfImagePages = 3): Promise<Attachment[]> {
   if (file.size > 5 * 1024 * 1024)
     throw new Error("Choose a file smaller than 5 MB.");
-  if (file.type === "application/pdf") {
+  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
     const pdfjs = await import("pdfjs-dist");
     pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
     const task = pdfjs.getDocument({
@@ -123,11 +127,31 @@ export async function readAttachment(file: File): Promise<Attachment> {
             .map((item) => ("str" in item ? item.str : ""))
             .join(" ") + "\n";
       }
-      if (!text.trim())
-        throw new Error(
-          "This PDF has no readable text. Upload an image of the event or describe it.",
-        );
-      return { name: file.name, type: file.type, text: text.slice(0, 20000) };
+      if (text.trim())
+        return [{ name: file.name, type: "application/pdf", text: text.slice(0, 20000) }];
+
+      const pageCount = Math.min(pdf.numPages, Math.max(1, maxPdfImagePages));
+      const baseName = file.name.replace(/\.pdf$/i, "");
+      const pages: Attachment[] = [];
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdf.getPage(i);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(1.5, 1800 / Math.max(baseViewport.width, baseViewport.height));
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvas, viewport, background: "#ffffff" }).promise;
+        pages.push({
+          name: `${baseName} - page ${i}.jpg`,
+          type: "image/jpeg",
+          dataUrl: canvas.toDataURL("image/jpeg", 0.86),
+        });
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
+      }
+      return pages;
     } finally {
       await task.destroy();
     }
@@ -140,5 +164,5 @@ export async function readAttachment(file: File): Promise<Attachment> {
     reader.onerror = () => reject(new Error("Could not read the file."));
     reader.readAsDataURL(file);
   });
-  return { name: file.name, type: file.type, dataUrl };
+  return [{ name: file.name, type: file.type, dataUrl }];
 }

@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { Arrow } from "../../components/arrow";
 import { BalanceVisual } from "../../components/balance-visual";
 import { SiteHeader } from "../../components/site-header";
-import type { ChatAttachment, ChatMessage, DecisionMetric, DecisionReply } from "../../lib/decision-chat";
+import { metricScoreOutOfTen, type ChatAttachment, type ChatMessage, type DecisionMetric, type DecisionReply } from "../../lib/decision-chat";
 
 const welcome: ChatMessage = { role: "assistant", content: "Tell me what you’re considering. I’ll ask for any decision-critical detail that’s missing, then give you a full scorecard—not just a yes or no." };
 const emptyDecision: DecisionReply = { reply: "", score: null, confidence: "low", summary: "", cost: [], upside: [], verdict: "undecided", reasons: [], choices: [], event: null };
@@ -13,7 +13,7 @@ const benefitOptions = ["Learned something", "Meaningful connection", "Useful op
 const costOptions = ["Travel", "Money", "Waiting", "Crowd", "Social effort", "Lost sleep", "Time commitment", "Nothing significant"];
 
 function meterText(metrics: DecisionMetric[], fallback: string) {
-  return metrics.length ? metrics.slice(0, 2).map(item => `${item.label} ${item.value}`).join(" · ") : fallback;
+  return metrics.length ? metrics.slice(0, 2).map(item => `${item.label} ${metricScoreOutOfTen(item.value)}/10`).join(" · ") : fallback;
 }
 
 function readFile(file: File) {
@@ -125,7 +125,7 @@ function Scorecard({ decision, marked, threadId, onMark, onReset }: { decision: 
 }
 
 function MetricGroup({ title, metrics, positive = false }: { title: string; metrics: DecisionMetric[]; positive?: boolean }) {
-  return <div className={`score-metrics ${positive ? "positive" : "negative"}`}><h3>{title}</h3>{metrics.map(item => <div className="score-metric" key={item.label}><span>{item.label}</span><div><i style={{ width: `${item.value}%` }} /></div><b>{item.value}</b></div>)}</div>;
+  return <div className={`score-metrics ${positive ? "positive" : "negative"}`}><h3>{title} · /10</h3>{metrics.map(item => { const score = metricScoreOutOfTen(item.value); return <div className="score-metric" key={item.label}><span>{item.label}</span><div><i style={{ width: `${score * 10}%` }} /></div><b>{score || "—"}</b></div>; })}</div>;
 }
 
 function FeedbackSurvey({ threadId, choice }: { threadId: string; choice: "going" | "skip" }) {

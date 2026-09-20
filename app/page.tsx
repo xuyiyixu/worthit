@@ -7,6 +7,8 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Heart,
   Home,
@@ -67,10 +69,14 @@ import {
   Profile,
   Reading,
   average,
+  calendarEventLoad,
+  checkinEnergy,
   current,
   demoState,
   dimensions,
   emptyState,
+  energyForecast,
+  eventDurationMinutes,
   inferContext,
   localDay,
   minutesUntilNextDay,
@@ -85,10 +91,10 @@ import {
   DEMO_KEY,
   drawDemo,
   persistDemo,
-  readAttachment,
+  readAttachments,
 } from "@/lib/client";
 import cardStyles from "./decision-cards.module.css";
-import { questionNeedsTypedAnswer } from "@/lib/decision-chat";
+import { metricScoreOutOfTen, questionNeedsTypedAnswer } from "@/lib/decision-chat";
 const links = [
   ["Home", Home],
   ["What Should I Do?", MessageCircle],
@@ -195,7 +201,8 @@ function SideNav({
   checkin: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
-  const energy = current(state).social;
+  const forecast = energyForecast(state),
+    hasEnergy = Boolean(current(state).createdAt);
   return (
     <Sidebar>
       <SidebarHeader>
@@ -233,20 +240,22 @@ function SideNav({
           }}
         >
           <div className="row">
-            <Battery size={19} /> Social Battery
+            <Battery size={19} /> Your Energy
           </div>
           <strong>
-            {state.checkins.length ? energy : "—"}
-            <span>{state.checkins.length ? "%" : ""}</span>
+            {hasEnergy ? forecast.energy : "—"}
+            <span>{hasEnergy ? "%" : ""}</span>
           </strong>
           <div className="meter">
-            <i style={{ width: `${state.checkins.length ? energy : 0}%` }} />
+            <i style={{ width: `${hasEnergy ? forecast.energy : 0}%` }} />
           </div>
           <p>
-            {state.checkins.length
-              ? energy < 40
+            {hasEnergy
+              ? forecast.energy < 40
                 ? "Make a little room for rest."
-                : "Room for a little connection."
+                : forecast.calendarLoad
+                  ? `${forecast.calendarLoad} points of planned activity load today.`
+                  : "Room for whatever feels right."
               : "Take a moment to check in."}
           </p>
           <span className="text-button">
@@ -276,14 +285,18 @@ export default function Page() {
   const [auth, setAuth] = useState<"login" | "signup" | null>(null),
     [survey, setSurvey] = useState(false),
     [checkin, setCheckin] = useState(false),
+    [manualCalendar, setManualCalendar] = useState(false),
+    [editingPlan, setEditingPlan] = useState<Decision | null>(null),
     [feedback, setFeedback] = useState<Decision | null>(null),
     [viewPlan, setViewPlan] = useState<Decision | null>(null),
     [extractingPlan, setExtractingPlan] = useState(false),
     [saving, setSaving] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
-    [tick, setTick] = useState(new Date());
+    [tick, setTick] = useState(new Date()),
+    [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [viewReading, setViewReading] = useState<Reading | null>(null);
   const stateRef = useRef(state);
+  const pendingEnergyAction = useRef<(() => void) | null>(null);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -418,13 +431,22 @@ export default function Page() {
         : "Demo ready. Sample history is included.",
     );
   }
-  function requireAccount(action: () => void) {
+  function requireAccount(action: () => void, options: { energy?: boolean } = {}) {
     if (!account && !demo) {
       setAuth("signup");
       return;
     }
     if (!state.profile.onboarded) {
       setSurvey(true);
+      return;
+    }
+    const today = localDay(new Date(), state.profile.timezone);
+    const checkedInToday = state.checkins.some((item) =>
+      localDay(new Date(item.createdAt), state.profile.timezone) === today,
+    );
+    if (options.energy !== false && !checkedInToday) {
+      pendingEnergyAction.current = action;
+      setCheckin(true);
       return;
     }
     action();
@@ -455,6 +477,47 @@ export default function Page() {
     stateRef.current = next;
     setState(next);
     return next;
+  }
+  async function estimateCalendarPlan(decision: Decision) {
+    const candidate = {
+      ...decision,
+      estimatedEnergyLoad: undefined,
+      energyExplanation: undefined,
+    };
+    if (account && config.ai) {
+      try {
+        const estimate = await api("/api/calendar/energy", { decision: candidate });
+        return {
+          ...candidate,
+          estimatedEnergyLoad: estimate.energyLoad as number,
+          energyExplanation: estimate.explanation as string,
+        };
+      } catch {}
+    }
+    const estimatedEnergyLoad = calendarEventLoad(candidate, stateRef.current);
+    return {
+      ...candidate,
+      estimatedEnergyLoad,
+      energyExplanation: "Personalized from the plan’s duration, timing, group, familiarity, your preferences, and any relevant past outcomes.",
+    };
+  }
+  async function saveCalendarPlan(decision: Decision) {
+    const estimated = await estimateCalendarPlan(decision);
+    if (account) await api("/api/data", { table: "calendar", data: estimated });
+    const latest = stateRef.current;
+    const exists = latest.decisions.some((item) => item.id === estimated.id);
+    const next = {
+      ...latest,
+      decisions: exists
+        ? latest.decisions.map((item) => item.id === estimated.id ? estimated : item)
+        : [estimated, ...latest.decisions],
+    };
+    if (demo) persistDemo(next);
+    stateRef.current = next;
+    setState(next);
+    setViewPlan(estimated);
+    if (estimated.event?.startAt) setCalendarMonth(new Date(estimated.event.startAt));
+    return estimated;
   }
   async function removeDecision(decision: Decision) {
     if (account) {
@@ -493,11 +556,22 @@ export default function Page() {
     }
   }
   const energy = current(state),
+    hasEnergy = Boolean(energy.createdAt),
+    forecast = energyForecast(state, tick),
     today = localDay(tick, state.profile.timezone),
     reading = state.readings.find((r) => r.date === today),
     summary = patternSummary(state),
     active = state.decisions.find((d) => d.id === selected) ?? null,
-    calendarPlans = state.decisions.filter((d) => d.markedChoice === "going");
+    calendarPlans = state.decisions
+      .filter((d) => d.markedChoice === "going")
+      .sort((a, b) => {
+        const aTime = a.event?.startAt ? Date.parse(a.event.startAt) : Number.POSITIVE_INFINITY;
+        const bTime = b.event?.startAt ? Date.parse(b.event.startAt) : Number.POSITIVE_INFINITY;
+        return aTime - bTime;
+      }),
+    visibleCalendarPlans = calendarPlans.filter(
+      (decision) => calendarDay(decision.event?.startAt, calendarMonth) !== null,
+    );
   async function draw() {
     requireAccount(async () => {
       setSaving(true);
@@ -522,7 +596,7 @@ export default function Page() {
       } finally {
         setSaving(false);
       }
-    });
+    }, { energy: false });
   }
   async function openPlanDetails(decision: Decision) {
     setViewPlan(decision);
@@ -533,7 +607,7 @@ export default function Page() {
       !event.description ||
       event.description === "A plan you are considering." ||
       event.description === "Event details were not provided.";
-    if (!needsExtraction) return;
+    if (!needsExtraction || !decision.messages.length) return;
     setExtractingPlan(true);
     try {
       const text = decision.messages
@@ -582,9 +656,15 @@ export default function Page() {
       <Toaster richColors position="bottom-right" />
       <SideNav
         page={page}
-        navigate={navigate}
+        navigate={(next) => {
+          if (next === "Insights") {
+            requireAccount(() => navigate(next));
+            return;
+          }
+          navigate(next);
+        }}
         state={state}
-        checkin={() => requireAccount(() => setCheckin(true))}
+        checkin={() => requireAccount(() => setCheckin(true), { energy: false })}
       />
       <main className="workspace">
         <header className="topbar">
@@ -685,26 +765,26 @@ export default function Page() {
                         <Battery size={20} />
                       </div>
                       <div className="energy-circle">
-                        {state.checkins.length ? energy.social : "—"}
-                        <span>{state.checkins.length ? "%" : ""}</span>
+                        {hasEnergy ? forecast.energy : "—"}
+                        <span>{hasEnergy ? "%" : ""}</span>
                       </div>
                       <h3>
-                        {!state.checkins.length
+                        {!hasEnergy
                           ? "How are you arriving today?"
-                          : energy.social < 40
+                          : forecast.energy < 40
                             ? "A little room to recharge"
-                            : "A little room to connect"}
+                            : "Enough room to choose your pace"}
                       </h3>
                       <p>
                         {energy.createdAt
-                          ? `Last checked in ${new Date(energy.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${energy.mood.toLowerCase()} mood`
-                          : "Your check-in helps put guidance in context."}
+                          ? `Now ${forecast.energy}% · after today’s plans about ${forecast.projected}%`
+                          : "Four quick questions will create your first energy estimate."}
                       </p>
                       <button
                         className="secondary"
-                        onClick={() => requireAccount(() => setCheckin(true))}
+                        onClick={() => requireAccount(() => setCheckin(true), { energy: false })}
                       >
-                        How are you feeling?
+                        Check in with yourself
                       </button>
                     </section>
                   </div>
@@ -768,7 +848,7 @@ export default function Page() {
                             <div>
                               <strong>{decisionTitle(d)}</strong>
                               <p>
-                                {new Date(d.createdAt).toLocaleDateString()} ·{" "}
+                                {new Date(d.event?.startAt ?? d.createdAt).toLocaleDateString()} ·{" "}
                                 {o
                                   ? o.went
                                     ? `Enjoyment ${o.enjoyment}/10`
@@ -923,7 +1003,9 @@ export default function Page() {
                           [
                             Sun,
                             "Your energy",
-                            `${energy.social}% social battery`,
+                            hasEnergy
+                              ? `${forecast.energy}% now · ${forecast.projected}% after today’s plans`
+                              : "50% neutral starting point",
                           ],
                           [
                             Heart,
@@ -942,7 +1024,7 @@ export default function Page() {
                           [
                             Sparkles,
                             "A gentle intention",
-                            energy.social < 40
+                            forecast.energy < 40
                               ? "Rest without guilt"
                               : "Connection at your pace",
                           ],
@@ -1060,7 +1142,7 @@ export default function Page() {
                       <ProfileForm
                         profile={state.profile}
                         onSave={(p) => save("profiles", p)}
-                        requireAccount={requireAccount}
+                        requireAccount={(action) => requireAccount(action, { energy: false })}
                       />
                       <div className="privacy-note">
                         <Heart size={20} />
@@ -1074,30 +1156,43 @@ export default function Page() {
                       </div>
                     </section>
                     <section className="panel">
-                      <div className="row between">
-                        <h2>Your social profile</h2>
-                        <button
-                          className="text-button"
-                          onClick={() => requireAccount(() => setSurvey(true))}
-                        >
-                          Edit / retake <RefreshCw size={14} />
-                        </button>
-                      </div>
-                      {dimensions.map(([key, label]) => (
-                        <div className="dimension" key={key}>
+                      {state.profile.onboarded ? (
+                        <>
                           <div className="row between">
-                            <span>{label}</span>
-                            <strong>{state.profile[key]}%</strong>
+                            <h2>Your social profile</h2>
+                            <button
+                              className="text-button"
+                              onClick={() => requireAccount(() => setSurvey(true), { energy: false })}
+                            >
+                              Edit / retake <RefreshCw size={14} />
+                            </button>
                           </div>
-                          <div className="meter">
-                            <i style={{ width: `${state.profile[key]}%` }} />
-                          </div>
+                          {dimensions.map(([key, label]) => (
+                            <div className="dimension" key={key}>
+                              <div className="row between">
+                                <span>{label}</span>
+                                <strong>{state.profile[key]}%</strong>
+                              </div>
+                              <div className="meter">
+                                <i style={{ width: `${state.profile[key]}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                          <p className="small">
+                            These are self-reported preferences, not a diagnosis.
+                            Your outcomes gradually add more context.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="profile-incomplete">
+                          <Sparkles size={28} />
+                          <h2>Complete your starting profile</h2>
+                          <p>Your preference results will appear only after you answer all eight questions.</p>
+                          <button className="primary" onClick={() => setSurvey(true)}>
+                            Start the questions <ArrowUpRight size={16} />
+                          </button>
                         </div>
-                      ))}
-                      <p className="small">
-                        These are self-reported preferences, not a diagnosis.
-                        Your outcomes gradually add more context.
-                      </p>
+                      )}
                     </section>
                   </div>
                 </>
@@ -1110,25 +1205,60 @@ export default function Page() {
                     subtitle="Your calendar, without the pressure to fill every square."
                   />
                   <section className="panel calendar-panel">
-                    <div className="row between">
-                      <h2>
-                        {tick.toLocaleDateString(undefined, {
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </h2>
-                      <span className="pill">YOUR SAVED PLANS</span>
+                    <div className="row between calendar-toolbar">
+                      <div className="calendar-month-nav">
+                        <button
+                          type="button"
+                          aria-label="Previous month"
+                          onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                        >
+                          <ChevronLeft size={17} />
+                        </button>
+                        <h2>
+                          {calendarMonth.toLocaleDateString(undefined, {
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </h2>
+                        <button
+                          type="button"
+                          aria-label="Next month"
+                          onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                        >
+                          <ChevronRight size={17} />
+                        </button>
+                      </div>
+                      <button
+                        className="secondary"
+                        onClick={() => requireAccount(() => {
+                          setEditingPlan(null);
+                          setManualCalendar(true);
+                        }, { energy: false })}
+                      >
+                        <Plus size={16} /> Add a plan
+                      </button>
                     </div>
-                    <CalendarView now={tick} decisions={calendarPlans} />
-                    {calendarPlans.length ? (
+                    <CalendarView
+                      today={tick}
+                      month={calendarMonth}
+                      decisions={calendarPlans}
+                      onSelect={(decision) => void openPlanDetails(decision)}
+                    />
+                    {visibleCalendarPlans.length ? (
                       <div className={cardStyles.calendarPlans}>
-                        <p className="eyebrow">PLANS YOU CHOSE</p>
-                        {calendarPlans.map((decision) => (
+                        <p className="eyebrow">PLANS THIS MONTH</p>
+                        {visibleCalendarPlans.map((decision) => (
                           <article className={cardStyles.calendarPlan} key={decision.id}>
                             <span><CalendarDays size={18} /></span>
                             <div>
                               <strong>{decisionTitle(decision)}</strong>
                               <p>{formatEventDetails(decision.event)}</p>
+                              <small>
+                                Personalized energy load · {calendarEventLoad(decision, state)} points
+                                {eventDurationMinutes(decision.event) !== null
+                                  ? ` · ${eventDurationMinutes(decision.event)} min`
+                                  : " · duration unavailable"}
+                              </small>
                             </div>
                             <button className="quiet" onClick={() => void openPlanDetails(decision)}>
                               View details <ArrowUpRight size={15} />
@@ -1143,9 +1273,12 @@ export default function Page() {
                         <p>Plans you mark “I’m going” will appear here.</p>
                         <button
                           className="secondary"
-                          onClick={() => navigate("What Should I Do?")}
+                          onClick={() => requireAccount(() => {
+                            setEditingPlan(null);
+                            setManualCalendar(true);
+                          }, { energy: false })}
                         >
-                          Talk through a plan <ArrowUpRight size={16} />
+                          Add a plan <Plus size={16} />
                         </button>
                       </div>
                     )}
@@ -1199,8 +1332,22 @@ export default function Page() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={survey} onOpenChange={setSurvey}>
-        <DialogContent className="app-dialog survey-dialog">
+      <Dialog
+        open={survey}
+        onOpenChange={(open) => {
+          if (open || state.profile.onboarded) setSurvey(open);
+        }}
+      >
+        <DialogContent
+          className="app-dialog survey-dialog"
+          showCloseButton={state.profile.onboarded}
+          onEscapeKeyDown={(event) => {
+            if (!state.profile.onboarded) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (!state.profile.onboarded) event.preventDefault();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Everyone has a different social rhythm.</DialogTitle>
             <DialogDescription>
@@ -1240,7 +1387,10 @@ export default function Page() {
           />
         </DialogContent>
       </Dialog>
-      <Dialog open={checkin} onOpenChange={setCheckin}>
+      <Dialog open={checkin} onOpenChange={(open) => {
+        setCheckin(open);
+        if (!open) pendingEnergyAction.current = null;
+      }}>
         <DialogContent className="app-dialog">
           <DialogHeader>
             <DialogTitle>How are you arriving today?</DialogTitle>
@@ -1252,8 +1402,38 @@ export default function Page() {
             initial={energy}
             save={async (value) => {
               await save("checkins", value);
+              const continuation = pendingEnergyAction.current;
+              pendingEnergyAction.current = null;
               setCheckin(false);
               toast.success("Check-in saved. A little more in tune.");
+              continuation?.();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={manualCalendar} onOpenChange={(open) => {
+        setManualCalendar(open);
+        if (!open) setEditingPlan(null);
+      }}>
+        <DialogContent className="app-dialog calendar-dialog">
+          <DialogHeader>
+            <DialogTitle>{editingPlan ? "Edit calendar plan" : "Add a calendar plan"}</DialogTitle>
+            <DialogDescription>
+              {editingPlan
+                ? "Update the plan details. Its personalized energy estimate will be recalculated."
+                : "Add a confirmed plan directly. Its scheduled time will be used for calendar placement and energy estimates."}
+            </DialogDescription>
+          </DialogHeader>
+          <ManualCalendarForm
+            key={editingPlan?.id ?? "new-calendar-plan"}
+            decision={editingPlan}
+            energy={hasEnergy ? checkinEnergy(energy) : 50}
+            energyRecorded={hasEnergy}
+            save={async (decision) => {
+              await saveCalendarPlan(decision);
+              setManualCalendar(false);
+              setEditingPlan(null);
+              toast.success(editingPlan ? "Calendar plan updated." : "Plan added to your calendar.");
             }}
           />
         </DialogContent>
@@ -1315,7 +1495,29 @@ export default function Page() {
                   <MapPin size={18} />
                   <span><small>WHERE</small>{viewPlan.event?.location || "Location to confirm"}</span>
                 </div>
+                <div>
+                  <Battery size={18} />
+                  <span>
+                    <small>PERSONALIZED ENERGY LOAD</small>
+                    {calendarEventLoad(viewPlan, state)} points
+                    <em>
+                      {viewPlan.energyExplanation ??
+                        "Estimated from this plan’s duration, timing, group, familiarity, your preferences, and relevant past outcomes."}
+                    </em>
+                  </span>
+                </div>
               </div>
+              <button
+                type="button"
+                className="secondary full"
+                onClick={() => {
+                  setEditingPlan(viewPlan);
+                  setViewPlan(null);
+                  setManualCalendar(true);
+                }}
+              >
+                Edit plan
+              </button>
             </div>
           )}
         </DialogContent>
@@ -1415,18 +1617,16 @@ function TarotCard({
     </div>
   );
 }
-function calendarDay(startAt: string | null | undefined, now: Date) {
+function calendarDay(startAt: string | null | undefined, month: Date) {
   if (!startAt) return null;
   const date = new Date(startAt);
   return Number.isNaN(date.getTime()) ||
-    date.getMonth() !== now.getMonth() ||
-    date.getFullYear() !== now.getFullYear()
+    date.getMonth() !== month.getMonth() ||
+    date.getFullYear() !== month.getFullYear()
     ? null
     : date.getDate();
 }
 function formatEventDetails(event: Decision["event"]) {
-  if (event?.whenText)
-    return event.location ? `${event.whenText} · ${event.location}` : event.whenText;
   const startAt = event?.startAt;
   const date = startAt ? new Date(startAt) : null;
   const time = date && !Number.isNaN(date.getTime())
@@ -1437,12 +1637,11 @@ function formatEventDetails(event: Decision["event"]) {
       hour: "numeric",
       minute: "2-digit",
     })
-    : "Date and time to confirm";
+    : event?.whenText || "Date and time to confirm";
   return event?.location ? `${time} · ${event.location}` : time;
 }
 function formatEventRange(event: Decision["event"]) {
-  if (event?.whenText) return event.whenText;
-  if (!event?.startAt) return "Date and time to confirm";
+  if (!event?.startAt) return event?.whenText || "Date and time to confirm";
   const start = new Date(event.startAt);
   if (Number.isNaN(start.getTime())) return "Date and time to confirm";
   const startText = start.toLocaleString(undefined, {
@@ -1462,14 +1661,26 @@ function eventDescription(decision: Decision) {
   if (decision.event?.description?.trim()) return decision.event.description.trim();
   return "Event details are not available yet.";
 }
-function CalendarView({ now, decisions }: { now: Date; decisions: Decision[] }) {
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).getDay(),
-    count = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
-    planDays = new Set(
-      decisions
-        .map((decision) => calendarDay(decision.event?.startAt, now))
-        .filter((day): day is number => day !== null),
-    );
+function CalendarView({
+  today,
+  month,
+  decisions,
+  onSelect,
+}: {
+  today: Date;
+  month: Date;
+  decisions: Decision[];
+  onSelect: (decision: Decision) => void;
+}) {
+  const start = new Date(month.getFullYear(), month.getMonth(), 1).getDay(),
+    count = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate(),
+    planDays = decisions.reduce((days, decision) => {
+      const day = calendarDay(decision.event?.startAt, month);
+      if (day === null) return days;
+      days.set(day, [...(days.get(day) ?? []), decision]);
+      return days;
+    }, new Map<number, Decision[]>()),
+    showingCurrentMonth = today.getMonth() === month.getMonth() && today.getFullYear() === month.getFullYear();
   return (
     <div className="calendar-grid">
       {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
@@ -1479,12 +1690,21 @@ function CalendarView({ now, decisions }: { now: Date; decisions: Decision[] }) 
         <span key={"empty" + i} />
       ))}
       {Array.from({ length: count }, (_, i) => (
-        <div className={i + 1 === now.getDate() ? "today" : ""} key={i}>
+        <div className={showingCurrentMonth && i + 1 === today.getDate() ? "today" : ""} key={i}>
           <span>{i + 1}</span>
-          {i + 1 === now.getDate() && <small>Today</small>}
-          {planDays.has(i + 1) && (
-            <i className={cardStyles.calendarDot} aria-label="Saved plan" />
-          )}
+          {showingCurrentMonth && i + 1 === today.getDate() && <small>Today</small>}
+          {planDays.get(i + 1)?.map((decision) => (
+            <button
+              type="button"
+              className="calendar-plan-label"
+              aria-label={`Open details for ${decisionTitle(decision)}`}
+              key={decision.id}
+              onClick={() => onSelect(decision)}
+            >
+              <i className={cardStyles.calendarDot} />
+              <span>{decisionTitle(decision)}</span>
+            </button>
+          ))}
         </div>
       ))}
     </div>
@@ -1650,6 +1870,125 @@ function Survey({
     </div>
   );
 }
+function dateTimeInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+function ManualCalendarForm({
+  decision,
+  energy,
+  energyRecorded,
+  save,
+}: {
+  decision?: Decision | null;
+  energy: number;
+  energyRecorded: boolean;
+  save: (decision: Decision) => Promise<void>;
+}) {
+  const initialStart = new Date(Math.ceil(Date.now() / 3600000) * 3600000);
+  const [value, setValue] = useState(() => ({
+    title: decision?.event?.title ?? decision?.title ?? "",
+    description: decision?.event?.description === "Manually added calendar plan." ? "" : decision?.event?.description ?? "",
+    location: decision?.event?.location ?? "",
+    start: decision?.event?.startAt ? dateTimeInputValue(new Date(decision.event.startAt)) : dateTimeInputValue(initialStart),
+    end: decision?.event?.endAt ? dateTimeInputValue(new Date(decision.event.endAt)) : dateTimeInputValue(new Date(initialStart.getTime() + 3600000)),
+    group: decision?.group ?? "small" as Decision["group"],
+    people: decision?.people ?? "friends" as Decision["people"],
+  }));
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  return (
+    <form
+      className="manual-calendar-form"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const start = new Date(value.start);
+        const end = new Date(value.end);
+        if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+          setError("End time must be after start time.");
+          return;
+        }
+        setBusy(true);
+        setError("");
+        try {
+          const id = decision?.id ?? uid();
+          const calendarEvent = {
+            title: value.title.trim(),
+            description: value.description.trim() || "Manually added calendar plan.",
+            whenText: `${start.toLocaleString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} – ${end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`,
+            startAt: start.toISOString(),
+            endAt: end.toISOString(),
+            location: value.location.trim() || null,
+          };
+          await save({
+            ...decision,
+            id,
+            threadId: decision?.threadId ?? id,
+            createdAt: decision?.createdAt ?? new Date().toISOString(),
+            title: calendarEvent.title,
+            messages: decision?.messages ?? [],
+            group: value.group,
+            people: value.people,
+            duration: eventDurationMinutes(calendarEvent) ?? 0,
+            batteryBefore: decision?.batteryBefore ?? energy,
+            energyRecorded: decision?.energyRecorded ?? energyRecorded,
+            markedChoice: "going",
+            event: calendarEvent,
+          });
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "Could not add this plan.");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label>
+        Plan name
+        <input required maxLength={80} value={value.title} onChange={(event) => setValue({ ...value, title: event.target.value })} placeholder="Dinner with friends" />
+      </label>
+      <div className="manual-calendar-times">
+        <label>
+          Starts
+          <input required type="datetime-local" value={value.start} onChange={(event) => setValue({ ...value, start: event.target.value })} />
+        </label>
+        <label>
+          Ends
+          <input required type="datetime-local" value={value.end} onChange={(event) => setValue({ ...value, end: event.target.value })} />
+        </label>
+      </div>
+      <label>
+        Location <span>optional</span>
+        <input maxLength={120} value={value.location} onChange={(event) => setValue({ ...value, location: event.target.value })} placeholder="Riverside Grand Hotel" />
+      </label>
+      <label>
+        Notes <span>optional</span>
+        <textarea maxLength={360} rows={3} value={value.description} onChange={(event) => setValue({ ...value, description: event.target.value })} placeholder="What the plan is for" />
+      </label>
+      <div className="manual-calendar-times">
+        <label>
+          Group size
+          <select value={value.group} onChange={(event) => setValue({ ...value, group: event.target.value as Decision["group"] })}>
+            <option value="solo">Solo</option>
+            <option value="small">Small group</option>
+            <option value="large">Large group</option>
+          </select>
+        </label>
+        <label>
+          People
+          <select value={value.people} onChange={(event) => setValue({ ...value, people: event.target.value as Decision["people"] })}>
+            <option value="alone">Just me</option>
+            <option value="friends">People I know</option>
+            <option value="strangers">Mostly new people</option>
+          </select>
+        </label>
+      </div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button className="primary full" disabled={busy || !value.title.trim()}>
+        {busy ? "Analyzing energy…" : decision ? "Save changes" : "Add to calendar"}
+      </button>
+    </form>
+  );
+}
 function CheckinForm({
   initial,
   save,
@@ -1658,7 +1997,64 @@ function CheckinForm({
   save: (c: Checkin) => Promise<void>;
 }) {
   const [v, setV] = useState(initial),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [answered, setAnswered] = useState<Set<string>>(
+      () => new Set(initial.createdAt ? ["mood", "physical", "workload", "social"] : []),
+    );
+  const choose = (key: string, update: Checkin) => {
+    setV(update);
+    setAnswered((previous) => new Set(previous).add(key));
+  };
+  const questions = [
+    {
+      key: "mood",
+      label: "How is your mood?",
+      value: v.mood,
+      options: [
+        ["Bad", "Bad"],
+        ["Okay", "Okay"],
+        ["Good", "Good"],
+        ["Fantastic", "Fantastic"],
+      ],
+      choose: (value: string) => choose("mood", { ...v, mood: value }),
+    },
+    {
+      key: "physical",
+      label: "How does your body feel?",
+      value: String(v.physical),
+      options: [
+        ["15", "Exhausted"],
+        ["35", "Low energy"],
+        ["70", "Fine"],
+        ["90", "Energized"],
+      ],
+      choose: (value: string) => choose("physical", { ...v, physical: Number(value) }),
+    },
+    {
+      key: "workload",
+      label: "What does today look like?",
+      value: String(v.stress),
+      options: [
+        ["90", "Overloaded"],
+        ["65", "Busy"],
+        ["20", "Manageable"],
+        ["10", "Nothing planned"],
+      ],
+      choose: (value: string) => choose("workload", { ...v, stress: Number(value) }),
+    },
+    {
+      key: "social",
+      label: "How open are you to people right now?",
+      value: String(v.social),
+      options: [
+        ["15", "Need quiet"],
+        ["40", "Something small"],
+        ["70", "Open to company"],
+        ["90", "Feeling social"],
+      ],
+      choose: (value: string) => choose("social", { ...v, social: Number(value) }),
+    },
+  ];
   return (
     <form
       onSubmit={async (e) => {
@@ -1673,31 +2069,39 @@ function CheckinForm({
         }
       }}
     >
-      <Range
-        label="Social energy"
-        value={v.social}
-        onChange={(social) => setV({ ...v, social })}
-        ends={["Need some quiet", "Ready to connect"]}
-      />
-      <Range
-        label="Physical energy"
-        value={v.physical}
-        onChange={(physical) => setV({ ...v, physical })}
-        ends={["Running on empty", "Rested and ready"]}
-      />
-      <Choice
-        label="Your mood"
-        value={v.mood}
-        options={["Low", "Okay", "Good", "Great"]}
-        onChange={(mood) => setV({ ...v, mood })}
-      />
-      <Range
-        label="Stress"
-        value={v.stress}
-        onChange={(stress) => setV({ ...v, stress })}
-        ends={["At ease", "Overwhelmed"]}
-      />
-      <button className="primary full" disabled={busy}>
+      <div className="checkin-score">
+        <span>{answered.size === 4 ? "Your energy estimate" : "Your energy will appear here"}</span>
+        <strong>{answered.size === 4 ? `${checkinEnergy(v)}%` : "—"}</strong>
+        <p>
+          {answered.size === 4
+            ? "Mood, physical energy, workload, and social readiness all contribute."
+            : `${4 - answered.size} quick ${4 - answered.size === 1 ? "answer" : "answers"} remaining.`}
+        </p>
+      </div>
+      <div className="checkin-questions">
+        {questions.map((question) => (
+          <fieldset key={question.label}>
+            <legend>{question.label}</legend>
+            <div className="checkin-options">
+              {question.options.map(([value, label]) => {
+                const selected = answered.has(question.key) && question.value === value;
+                return (
+                  <button
+                    type="button"
+                    key={value}
+                    className={selected ? "selected" : ""}
+                    aria-pressed={selected}
+                    onClick={() => question.choose(value)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+      <button className="primary full" disabled={busy || answered.size < 4}>
         {busy ? "Saving…" : "Save my check-in"}
       </button>
     </form>
@@ -1782,7 +2186,7 @@ function FeedbackForm({
         e.preventDefault();
         setBusy(true);
         try {
-          await save(d, v);
+          await save(d, { ...v, energyRecorded: true });
         } catch (e) {
           toast.error(String(e));
         } finally {
@@ -1836,7 +2240,7 @@ function FeedbackForm({
             onChange={(enjoyment) => setV({ ...v, enjoyment })}
           />
           <Range
-            label="Social battery afterward"
+            label="Energy afterward"
             value={v.after}
             onChange={(after) => setV({ ...v, after })}
           />
@@ -1880,7 +2284,7 @@ function FeedbackForm({
             ends={["None", "A lot"]}
           />
           <Range
-            label="Social battery afterward"
+            label="Energy afterward"
             value={v.after}
             onChange={(after) => setV({ ...v, after })}
           />
@@ -1918,6 +2322,8 @@ function Chat({
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false),
     [error, setError] = useState("");
+  const currentCheckin = current(state),
+    hasEnergy = Boolean(currentCheckin.createdAt);
   const messageList = useRef<HTMLDivElement>(null),
     input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -1934,7 +2340,8 @@ function Chat({
       title: "New plan",
       messages: [],
       ...inferContext(content + " " + submittedFiles.map((f) => f.text ?? "").join(" ")),
-      batteryBefore: current(state).social,
+      batteryBefore: hasEnergy ? checkinEnergy(currentCheckin) : 50,
+      energyRecorded: hasEnergy,
     };
     const user: Message = {
       id: uid(),
@@ -1975,6 +2382,7 @@ function Chat({
         threadId: result.threadId ?? d.threadId,
         title: result.event?.title ?? result.decision?.event?.title ?? d.title,
         event: result.event ?? result.decision?.event ?? d.event,
+        duration: eventDurationMinutes(result.event ?? result.decision?.event ?? d.event) ?? 0,
         messages: [
           ...storedMessages,
           {
@@ -2015,7 +2423,33 @@ function Chat({
         active.event ??
         active.messages.findLast((message) => message.decision?.event)?.decision
           ?.event;
-      await save("decisions", { ...active, markedChoice: choice, event });
+      let marked = { ...active, markedChoice: choice, event };
+      if (choice === "going" && event?.startAt && event.endAt) {
+        const candidate = { ...marked, estimatedEnergyLoad: undefined, energyExplanation: undefined };
+        if (!demo && config.ai) {
+          try {
+            const estimate = await api("/api/calendar/energy", { decision: candidate });
+            marked = {
+              ...candidate,
+              estimatedEnergyLoad: estimate.energyLoad as number,
+              energyExplanation: estimate.explanation as string,
+            };
+          } catch {
+            marked = {
+              ...candidate,
+              estimatedEnergyLoad: calendarEventLoad(candidate, state),
+              energyExplanation: "Personalized from the plan and your current profile; AI analysis was temporarily unavailable.",
+            };
+          }
+        } else {
+          marked = {
+            ...candidate,
+            estimatedEnergyLoad: calendarEventLoad(candidate, state),
+            energyExplanation: "Personalized from the plan’s duration, timing, group, familiarity, your preferences, and any relevant past outcomes.",
+          };
+        }
+      }
+      await save("decisions", marked);
       toast.success(
         choice === "going"
           ? "Added to your calendar."
@@ -2044,7 +2478,7 @@ function Chat({
           New conversation
         </button>
         <p className="eyebrow">YOUR CONVERSATIONS</p>
-        {state.decisions.map((d) => (
+        {state.decisions.filter((d) => d.messages.length > 0).map((d) => (
           <div className="conversation-row" key={d.id}>
             <button
               disabled={busy}
@@ -2084,7 +2518,7 @@ function Chat({
         <div className="chat-context">
           <span className="pill">
             <Battery size={14} />
-            {current(state).social}% social energy
+            {hasEnergy ? checkinEnergy(currentCheckin) : 50}% current energy
           </span>
           <span className="small">
             {patternSummary(state).observations} past experiences ·{" "}
@@ -2255,20 +2689,32 @@ function Chat({
                 }
                 setUploading(true);
                 try {
-                  const f = await readAttachment(file);
+                  const addedFiles = await readAttachments(file, 3 - files.length);
                   if (
                     files.reduce(
                       (sum, a) =>
                         sum + (a.dataUrl?.length ?? a.text?.length ?? 0),
                       0,
                     ) +
-                      (f.dataUrl?.length ?? f.text?.length ?? 0) >
+                      addedFiles.reduce(
+                        (sum, attachment) =>
+                          sum +
+                          (attachment.dataUrl?.length ??
+                            attachment.text?.length ??
+                            0),
+                        0,
+                      ) >
                     7_000_000
                   )
                     throw new Error("Keep total attachments under 5 MB.");
-                  setFiles((prev) => [...prev, f]);
+                  setFiles((prev) => [...prev, ...addedFiles]);
                   toast.success(
-                    f.text ? "PDF text extracted." : "Image attached.",
+                    addedFiles[0]?.text
+                      ? "PDF text extracted."
+                      : file.type === "application/pdf" ||
+                          file.name.toLowerCase().endsWith(".pdf")
+                        ? `${addedFiles.length} PDF page${addedFiles.length === 1 ? "" : "s"} attached as image${addedFiles.length === 1 ? "" : "s"}.`
+                        : "Image attached.",
                   );
                 } catch (e) {
                   const message = e instanceof Error ? e.message : String(e);
@@ -2355,52 +2801,69 @@ function DecisionScoreCard({
   );
 }
 function DecisionFactors({ title, items }: { title: string; items: NonNullable<Message["decision"]>["cost"] }) {
-  return <div className={cardStyles.factors}><b>{title}</b>{items.map((item) => <div key={item.label}><span>{item.label}</span><i><span style={{ width: `${item.value}%` }} /></i><strong>{item.value}</strong></div>)}</div>;
+  return <div className={cardStyles.factors}><b>{title} · /10</b>{items.map((item) => { const score = metricScoreOutOfTen(item.value); return <div key={item.label}><span>{item.label}</span><i><span style={{ width: `${score * 10}%` }} /></i><strong>{score || "—"}</strong></div>; })}</div>;
 }
 function Insights({ state }: { state: AppState }) {
   const observations = patterns(state),
     summary = patternSummary(state),
-    history = state.checkins.slice(0, 14).reverse();
+    history = state.checkins.slice(0, 14).reverse(),
+    forecast = energyForecast(state),
+    hasEnergy = Boolean(current(state).createdAt);
   const groups = [
     ["Small gatherings", observations.filter((v) => v.d.group === "small")],
     ["Large gatherings", observations.filter((v) => v.d.group === "large")],
     ["Close friends", observations.filter((v) => v.d.people === "friends")],
     ["New people", observations.filter((v) => v.d.people === "strangers")],
-    ["90 minutes or less", observations.filter((v) => v.d.duration <= 90)],
+    ["90 minutes or less", observations.filter((v) => v.d.duration > 0 && v.d.duration <= 90)],
     ["Longer than 90 minutes", observations.filter((v) => v.d.duration > 90)],
   ] as const;
   return (
     <>
       <div className="three-grid stats">
         <div className="panel">
-          <span>Experiences reflected on</span>
-          <strong>{observations.length}</strong>
-          <p>Every reflection adds context.</p>
+          <span>Energy right now</span>
+          <strong>
+            {hasEnergy ? <>{forecast.energy}<small>%</small></> : "—"}
+          </strong>
+          <p>{hasEnergy ? "Based on today’s check-in." : "Complete today’s check-in to create an energy estimate."}</p>
         </div>
         <div className="panel">
-          <span>Average enjoyment</span>
-          <strong>
-            {observations.length
-              ? average(observations.map((v) => v.o.enjoyment)).toFixed(1)
-              : "—"}
-            <small>/10</small>
-          </strong>
-          <p>Among events you attended.</p>
+          <span>Today’s calendar load</span>
+          <strong>−{forecast.calendarLoad}<small> pts</small></strong>
+          <p>{forecast.plans.length ? `${forecast.plans.length} remaining ${forecast.plans.length === 1 ? "plan" : "plans"} today.` : "No timed plans are weighing on the rest of today."}</p>
         </div>
         <div className="panel">
-          <span>Average battery change</span>
-          <strong>
-            {observations.length
-              ? `${summary.averageBatteryChange > 0 ? "+" : ""}${Math.round(summary.averageBatteryChange)}`
-              : "—"}
-            <small>pts</small>
-          </strong>
-          <p>After an event, compared with before.</p>
+          <span>Expected after today’s plans</span>
+          <strong>{hasEnergy ? <>{forecast.projected}<small>%</small></> : "—"}</strong>
+          <p>{hasEnergy ? "Adjusted using your calendar and similar past experiences." : "Complete today’s check-in before we forecast your remaining energy."}</p>
         </div>
       </div>
+      <section className="panel forecast-panel">
+        <div>
+          <p className="eyebrow">WHAT SHAPES TODAY</p>
+          <h2>Your calendar has an energy footprint.</h2>
+          <p>
+            We estimate each plan from its actual scheduled duration, crowd size,
+            unfamiliar people, travel, and the average energy change from similar
+            activities you reflected on.
+          </p>
+        </div>
+        <div className="forecast-plans">
+          {forecast.plans.length ? forecast.plans.map((plan) => {
+            const duration = eventDurationMinutes(plan.event);
+            return (
+              <div key={plan.id}>
+                <span>{decisionTitle(plan)}</span>
+                <strong>−{calendarEventLoad(plan, state)} pts</strong>
+                <small>{duration === null ? "Duration unavailable" : `${duration} min`} · {plan.people === "strangers" ? "new people" : plan.people}</small>
+              </div>
+            );
+          }) : <p className="empty-copy">Plans marked “I’m going” with a confirmed time today will appear here.</p>}
+        </div>
+      </section>
       <section className="panel history-chart">
         <div className="row between">
-          <h2>Your social energy</h2>
+          <h2>Your energy over time</h2>
           <span className="small">Last {history.length} check-ins</span>
         </div>
         {history.length ? (
@@ -2411,14 +2874,14 @@ function Insights({ state }: { state: AppState }) {
               aria-label={history
                 .map(
                   (c) =>
-                    `${new Date(c.createdAt).toLocaleDateString()}: ${c.social}%`,
+                    `${new Date(c.createdAt).toLocaleDateString()}: ${checkinEnergy(c)}%`,
                 )
                 .join(", ")}
             >
               {history.map((c) => (
                 <div key={c.id}>
-                  <span>{c.social}%</span>
-                  <i style={{ height: `${Math.max(3, c.social * 1.65)}px` }} />
+                  <span>{checkinEnergy(c)}%</span>
+                  <i style={{ height: `${Math.max(3, checkinEnergy(c) * 1.65)}px` }} />
                   <small>
                     {new Date(c.createdAt).toLocaleDateString(undefined, {
                       month: "short",
@@ -2428,7 +2891,7 @@ function Insights({ state }: { state: AppState }) {
                 </div>
               ))}
             </div>
-            <p className="small">Energy changes. A low day isn’t a bad day.</p>
+            <p className="small">Energy combines mood, physical state, workload, and social readiness. A low day isn’t a bad day.</p>
           </>
         ) : (
           <p className="empty-copy">
@@ -2438,10 +2901,11 @@ function Insights({ state }: { state: AppState }) {
       </section>
       <div className="insights-grid">
         <section className="panel">
-          <h2>What seems to fill your cup?</h2>
+          <h2>Which plans tend to feel worth it?</h2>
           <p className="small">Observed enjoyment · 1–10</p>
-          {groups.map(([label, rows]) => (
-            <div className="pattern-row" key={label}>
+          {groups.map(([label, rows]) => {
+            const energyRows = rows.filter(({ d, o }) => d.energyRecorded && o.energyRecorded);
+            return <div className="pattern-row" key={label}>
               <div className="row between">
                 <span>{label}</span>
                 <strong>
@@ -2460,24 +2924,24 @@ function Insights({ state }: { state: AppState }) {
                   }}
                 />
               </div>
-              {rows.length > 0 && (
+              {energyRows.length > 0 && (
                 <p>
                   Average energy change:{" "}
                   {Math.round(
-                    average(rows.map((v) => v.o.after - v.d.batteryBefore)),
+                    average(energyRows.map((v) => v.o.after - v.d.batteryBefore)),
                   )}{" "}
                   points
                 </p>
               )}
             </div>
-          ))}
+          })}
         </section>
         <section className="panel learning-panel">
           <span className="feature-icon">✧</span>
           <h2>A profile that grows with you.</h2>
           <p>
-            Your survey gives us a starting point. Your lived experience
-            gradually adds more weight.
+            Check-ins, today’s calendar, chatbot decisions, and your reflections
+            gradually make future estimates more personal.
           </p>
           <div className="weight-bar">
             <i style={{ width: `${summary.historyWeight * 100}%` }} />

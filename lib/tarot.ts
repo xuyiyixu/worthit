@@ -1,5 +1,5 @@
 import type { AppState, Reading } from "./model.ts";
-import { current, localDay, uid } from "./model.ts";
+import { checkinEnergy, current, localDay, uid } from "./model.ts";
 const majors = [
   "The Fool",
   "The Magician",
@@ -131,13 +131,13 @@ export function makeReading(
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
   const cards = ids.slice(0, 3),
-    energy = current(s).social;
+    energy = checkinEnergy(current(s));
   return {
     id: uid(),
     date,
     cards,
     energy,
     reading: `${deck[cards[0]].name} invites you to reflect on ${deck[cards[0]].theme.toLowerCase().replace(" · ", " and ")}. In your connections, ${deck[cards[1]].name} offers a prompt about ${deck[cards[1]].theme.toLowerCase().replace(" · ", " and ")}. Finally, ${deck[cards[2]].name} asks: what would ${deck[cards[2]].theme.toLowerCase().split(" · ")[0]} look like in one small choice today?`,
-    guidance: `With social energy at ${energy}%, ${energy < 40 ? "make space for quiet before committing to more" : "consider one connection that feels nourishing"}. ${s.profile.recovery > 60 ? "Leave some recovery time in your day." : "Check in with yourself as the day unfolds."} These cards are reflection prompts, not predictions or instructions.`,
+    guidance: `With your energy estimate at ${energy}%, ${energy < 40 ? "make space for quiet before committing to more" : "consider one connection that feels nourishing"}. ${s.profile.recovery > 60 ? "Leave some recovery time in your day." : "Check in with yourself as the day unfolds."} These cards are reflection prompts, not predictions or instructions.`,
   };
 }

@@ -39,6 +39,11 @@ export type ChatAttachment = {
   dataUrl: string;
 };
 
+export function metricScoreOutOfTen(value: number) {
+  const normalized = value > 10 ? value / 10 : value;
+  return Math.round(Math.max(0, Math.min(10, normalized)) * 10) / 10;
+}
+
 export function questionNeedsTypedAnswer(question: string) {
   return /\b(?:estimated?|cost|price|amount|budget|how (?:much|many|far|long)|\d+\s*(?:to|-|–)\s*\d+|minutes?|hours?|miles?|dollars?)\b/i.test(question);
 }

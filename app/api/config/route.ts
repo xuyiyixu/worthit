@@ -1,9 +1,10 @@
 import { databaseConfigured } from "../../../lib/db";
+import { nvidiaConfigured } from "../../../lib/nvidia";
 
 export async function GET() {
   return Response.json({
     auth: databaseConfigured(),
-    ai: Boolean(process.env.NVIDIA_API_KEY),
-    vision: Boolean(process.env.NVIDIA_API_KEY),
+    ai: nvidiaConfigured(),
+    vision: nvidiaConfigured(),
   });
 }
