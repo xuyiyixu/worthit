@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { currentUser } from "../../../lib/auth";
 import { databaseConfigured, db, query } from "../../../lib/db";
@@ -9,7 +8,7 @@ import { profileForUser } from "../../../lib/profile";
 
 export const runtime = "nodejs";
 
-const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]);
+const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "application/pdf"]);
 
 const systemPrompt = `You are WorthIt, a balanced decision partner for events and plans.
 Help the user decide whether an event is realistically worth attending for them. Consider both hidden cost (travel, waiting, money, crowd, time, social effort, schedule friction) and hidden upside (learning, connections, relationships, opportunity, enjoyment, novelty, interest, recovery).
@@ -156,15 +155,11 @@ async function prepareAttachment(attachment: ChatAttachment) {
   if (!match || match[1] !== attachment.type) throw new Error("Invalid attachment data");
   const buffer = Buffer.from(match[2], "base64");
   if (!buffer.length || buffer.length > 10 * 1024 * 1024) throw new Error("Attachment is too large");
-  if (attachment.type.startsWith("image/")) return { attachment, extractedText: null, imageData: buffer, promptPart: { type: "image_url", image_url: { url: attachment.dataUrl } } };
+  if (attachment.type.startsWith("image/")) return { attachment, extractedText: null, imageData: null, promptPart: { type: "image_url", image_url: { url: attachment.dataUrl } } };
   let extractedText = "";
   if (attachment.type === "application/pdf") {
     const parser = new PDFParse({ data: buffer });
     try { extractedText = (await parser.getText()).text; } finally { await parser.destroy(); }
-  } else if (attachment.type.includes("wordprocessingml")) {
-    extractedText = (await mammoth.extractRawText({ buffer })).value;
-  } else {
-    extractedText = buffer.toString("utf8");
   }
   extractedText = extractedText.trim().slice(0, 18_000);
   if (!extractedText) throw new Error(`No readable text found in ${attachment.name}`);
