@@ -216,3 +216,8 @@ The local application accesses the NIM service through SSH port forwarding. The 
 npm run typecheck
 npm run build
 ```
+
+## Team Members
+
+- **Kelly Zheng Feng** — Kellyzheng0295@gmail.com
+- **Full Name** — email address
