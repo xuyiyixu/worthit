@@ -1,6 +1,6 @@
-# Wotrhit
+# WorthIt
 
-Wotrhit is a responsive decision companion for thinking through plans using current energy, personal preferences, calendar commitments, and past outcomes.
+WorthIt is a responsive decision companion for thinking through plans using current energy, personal preferences, calendar commitments, and past outcomes.
 
 ## Features
 

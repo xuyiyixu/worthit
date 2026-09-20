@@ -208,7 +208,7 @@ function SideNav({
       <SidebarHeader>
         <div className="brand">
           <span>✦</span>
-          <h2>Wotrhit</h2>
+          <h2>WorthIt</h2>
         </div>
         <p className="brand-note">A little clarity. A little more you.</p>
       </SidebarHeader>
@@ -393,7 +393,7 @@ export default function Page() {
       context.registerTool(
         {
           name: "navigate_social_companion",
-          description: "Navigate to a page in Wotrhit",
+          description: "Navigate to a page in WorthIt",
           inputSchema: {
             type: "object",
             properties: {
